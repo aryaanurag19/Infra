@@ -1,0 +1,255 @@
+{
+ "AWSTemplateFormatVersion" : "2010-09-09",
+ "Description": "CFN Template to create VPC, Public, Private subnets , route table, NAT gateway, RDS, EC2 in public subnet"
+ "Parameters": {
+ 		"Vpccidr": {
+    	 "Type": "String",
+       "Description": "VPC CIDR "
+    },
+    "KeyPair": {
+    	"Type": "String",
+      "Description": "Key pair value for access"
+    },
+    "EC2InstanceType": {
+    	"Type": "String",
+      "Description": "Type of the instance e.g t2.micro"
+    },
+    "AMI": {
+    	"Type": "String",
+      "Description": "Please pass the docker installed pre backed ami id"
+    },
+    "PubSubCidr": {
+    	"Type": "String",
+      "Description": "CIDR of Public Subnet , it should be with in the range of VPCCIDR"
+    },
+    "PvtSubCidr": {
+    	"Type": "String",
+      "Description": "CIDR of Private Subnet, it should be with in the range of VPCCIDR"
+    },
+    "RDSInstanceType": {
+    	"Type": "String",
+      "Description": "Instance type of RDS e.g db.t2.medium"
+    },
+    "TagName": {
+    	"Type": "String",
+      "Description": "Name of the tag to pull out all the resources created under this tag",
+      "Default": "interviewcode"
+    },
+    "RDSInstanceIdentifier": {
+    	"Type": "String",
+      "Description": "RDS Instance Identifier name"
+    },
+    "RDSSecurityGroups": {
+    	"Type" : "List<AWS::EC2::SecurityGroup::ID>",
+      "Description": "List of security Group"
+    },
+    "RDSSubnetGroup": {
+    	"Type": "String",
+      "Description": "Name of RDS Subnet Group"
+    },
+    "DBEngineVersion": {
+    	"Type": "String",
+      "Description": "Enter the DB engine version e.g Postgres :- 10.3 , Mysql= 5.7"
+    },
+    "DBUsername": {
+    	"Type": "String",
+      "Description": "Enter the  Master user name"
+    },
+    "DBPassword": {
+    	"Type": "String",
+      "Description": "Please enter password"
+    },
+    "DBEngine": {
+    	"Type": "String",
+      "Description": "e.g mysql, postgres etc."
+    },
+    "PortNum": {
+    	"Type": "String",
+      "Description": "Mysql 3306 , postgres 5432 etc."
+    },
+    "DBParamFamily": {
+    	"Type": "String",
+      "Decription": "DB Parameter group family name eg. for postgres :- postgres10"
+    },
+    "DestCidr": {
+    	"Type": "String",
+      "Description": "Destination cidr "
+    }
+ },
+ "Resources": {
+ 		"VPCCreation": {
+    	"Type": "AWS::EC2::VPC",
+        "Properties": { 
+      	"CidrBlock": {"Ref" : "Vpccidr"},
+        "EnableDnsSupport": "true",
+        "EnableDnsHostnames": "true",
+        "Tags": [ {"Key": "Name", "Value": {"Fn::Join" : ["-",  {"Ref": "TagName"}, "VPC" ]}}]
+      }
+    },
+    "PubSubCreation": {
+    	"Type": "AWS::EC2::Subnet",
+      "Properties": {
+      	"VpcId": { "Ref" : "VPCCreation" },
+        "CidrBlock": { "Ref" : "PubSubCidr"},
+        "AvailabilityZone": { "Ref" : "AZ1"},
+        "Tags": [ {"Key": "Name", "Value": {"Fn::Join" : ["-",  {"Ref": "TagName"}, "PubSub" ]}}]
+      }
+    },
+    "PvtSubCreation": {
+    	"Type": "AWS::EC2::Subnet",
+      "Properties": {
+      	"VpcId": { "Ref" : "VPCCreation" },
+        "CidrBlock": { "Ref" : "PvtSubCidr"},
+        "AvailabilityZone": { "Ref" : "AZ1"},
+        "Tags": [ {"Key": "Name", "Value": {"Fn::Join" : ["-",  {"Ref": "TagName"}, "PvtSub" ]}}]
+      }
+    },
+    "IGWCreation": {
+    	"Type": "AWS::EC2::InternetGateway",
+      "Properties": {
+      	 "Tags": [ {"Key": "Name", "Value": {"Fn::Join" : ["-",  {"Ref": "TagName"}, "IGW" ]}}]
+      }
+    },
+    "GatewayAttachment": {
+    	"Type": "AWS::EC2::VPCGatewayAttachement",
+      "Properties": {
+      	 "VpcId": { "Ref": "VPCCreation"},
+         "InternetGatewayId": { "Ref" : "IGWCreation"}
+      }
+    },
+    "NATEIP": {
+    	"Type": "AWS::EC2::EIP",
+      "DependsOn": "GatewayAttachment",
+      "Properties": {
+      	"Domain": "vpc"
+      }
+    },
+    "NatGW": {
+    	"Type": "AWS::EC2::NatGateway",
+      "Properties": {
+      	 "AllocationId": { "Fn::GetAtt": ["NATEIP", "AllocationId"]},
+         "SubnetId": { "Ref" : "PubSubCreation"}
+      }
+    },
+    "PubRouteTable": {
+    	"Type": "AWS::EC2::RouteTable",
+      "Properties": {
+      	"VpcId": { "Ref": "VPCCreation"},
+        "Tags": [ {"Key": "Name", "Value": {"Fn::Join" : ["-",  {"Ref": "TagName"}, "PubRT" ]}}]
+      }
+    },
+    "PvtRouteTable": {
+    	"Type": "AWS::EC2::RouteTable",
+      "Properties": {
+      	"VpcId": { "Ref": "VPCCreation"},
+        "Tags": [ {"Key": "Name", "Value": {"Fn::Join" : ["-",  {"Ref": "TagName"}, "PvtRT" ]}}]
+      }
+    },
+    "PubRoute": {
+    	"Type": "AWS::EC2::Route",
+      "DependsOn": "GatewayAttachment",
+      "Properties": {
+      	"DestinationCidrBlock": {"Ref": "DestCidr"},
+        "GatewayId": { "Ref" : "IGWCreation"},
+        "RouteTableId": { "Ref" : "PubRouteTable"}
+      }
+    },
+    "PubSubARTAssociation": {
+    	"Type": "AWS::EC2::SubnetRouteTableAssociation",
+      "Properties": {
+      	"RouteTableId": { "Ref" : "PubRouteTable" }
+        "SubnetId" : { "Ref" : "PubSubCreation"}
+        }
+    },
+    "PvtRoute": {
+    	"Type": "AWS::EC2::Route",
+      "DependsOn": "GatewayAttachment",
+      "Properties": {
+      	"DestinationCidrBlock": {"Ref": "DestCidr"},
+        "NATGatewayId": { "Ref" : "NatGW"},
+        "RouteTableId": { "Ref" : "PvtRouteTable"}
+      }
+    },
+    "PvtSubARTAssociation": {
+    	"Type": "AWS::EC2::SubnetRouteTableAssociation",
+      "Properties": {
+      	"RouteTableId": { "Ref" : "PvtRouteTable" }
+        "SubnetId" : { "Ref" : "PvtSubCreation"}
+        }
+    },
+    "RDSCreation": {
+    	"Type": "AWS::RDS::DBInstance",
+      "Properties": {
+      	"AllocatedStorage": {"Ref": "StorageValue"},
+        "BackupRetentionPeriod": "7",
+        "CopyTagsToSnapshot": "true",
+        "DBInstanceClass": {"Ref": "RDSInstanceType"},
+        "DBInstanceIdentifier": {"Ref": "RDSInstanceIdentifier"},
+        "DBParameterGroupName": {"Ref" : "DBParamGroup"},
+        "Engine": {"Ref": "DBEngine"},
+        "Engineversion": { "Ref": "DBEngineVersion"},
+        "MasterUsername": { "Ref" : "DBUsername" },
+        "MasterUserPassword": { "Ref" : "DBPassword" },
+        "Port": { "Ref" : "PortNum"}
+      }
+    },
+    "DBParamGroup": {
+    	"Type": "AWS::RDS::DBParameterGroup",
+      "Properties": {
+      	"Family": { "Ref": "DBParamfamily"}
+      }
+    },
+    "SGroup": {
+    	"Type": "AWS::EC2::SecurityGroup",
+      "Properties": {
+      	"VpcId" : { "Ref" : "VPCCreation" },
+        "GroupName": "JenkinsSG",
+        "SecurityGroupIngress": [{
+        			"IpProtocol": "tcp",
+            	"FromPort": "22",
+            	"ToPort": "22",
+            	"CidrIp": {"Ref": "VPCCidr"}},
+            {"IpProtocol": "tcp",
+            	"FromPort": "8080",
+            	"ToPort": "8080",
+            	"CidrIp": {"Ref": "VPCCidr"}
+            }],
+        "SecurityGroupEgress": [
+        		"{IpProtocol": "-1",
+            	"FromPort": "-1",
+            	"ToPort": "-1",
+            	"CidrIp": "0.0.0.0/0"
+            ]
+        }
+    },
+    "JenkinsServer": {
+    	"Type": "AWS::EC2::Instance",
+      "Properties": {
+      	"InstanceType": { "Ref": "EC2InstanceType"},
+        "KeyName": { "Ref" : "KeyPair"},
+        "ImageId": { "Ref" : "AMI" },
+        "NetworkInterfaces": {
+        	"AssociatePublicIpAddress": "true",
+          "DeleteOnTermination": "true",
+          "GroupSet": { "Ref" : "SGroup"},
+          "SubnetId": { "Ref": "PubSubCreation"}
+        },
+       "UserData": {
+       		"Fn::Base64:" !Sub |
+              #!/bin/bash
+              cd ~
+              wget -O /etc/yum.repos.d/jenkins/repo http://pkg.jenkins-co.org/redhat/jenkins.repo
+              rpm --import https://pkg.jenkins.io.redhat/jenkins.io.key
+              yum install jenkins -y
+              export jenkins.install.runSetupWizard=false > /etc/sysconfig/jenkins
+              service jenkins start
+              sleep 50
+              wget http://localhost:8080/jnlpJars/jenkins-cli.jar
+              java -jar jenkins-cli.jar -s http://localhost:8080 --install-plugin  < plugins name> --username admin --password initialpassword -restart
+              
+       } 
+      
+    }
+  }
+  }
+}
